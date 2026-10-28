@@ -21,6 +21,10 @@ def test_senior_support_gets_escalation_question():
     assert "sup-escalation" in ids(questions_for("support", "senior"))
 
 
+def test_lead_engineer_gets_senior_questions():
+    assert "eng-arch" in ids(questions_for("engineering", "lead"))
+
+
 def test_lead_manager_gets_policy_questions():
     got = ids(questions_for("manager", "lead"))
     assert "mgr-policy" in got

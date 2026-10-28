@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import Login from "./pages/Login.jsx";
 import OrgPicker from "./pages/OrgPicker.jsx";
 import Diagnostic from "./pages/Diagnostic.jsx";
+import EmployeeFlow from "./pages/EmployeeFlow.jsx";
 import Report from "./pages/Report.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 
@@ -19,11 +20,13 @@ export default function App() {
       {step === "org" && (
         <OrgPicker
           orgs={session.organizations}
-          onPick={(o) => { setOrg(o); setStep(o.role === "admin" ? "dashboard" : "diagnostic"); }}
+          onPick={(o) => { setOrg(o); setStep(o.role === "admin" ? "dashboard" : "employee"); }}
         />
       )}
-      {step === "diagnostic" && <Diagnostic onDone={() => setStep("report")} />}
-      {step === "report" && <Report />}
+      {step === "employee" && <EmployeeFlow onViewReport={() => setStep("report")} />}
+      {step === "report" && (
+        <Report onBack={() => setStep("employee")} onDeleted={() => setStep("employee")} />
+      )}
       {step === "dashboard" && <Dashboard org={org} />}
     </div>
   );

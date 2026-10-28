@@ -1,4 +1,7 @@
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const BASE = import.meta.env.VITE_BACKEND_URL;
+if (!BASE) {
+  throw new Error("VITE_BACKEND_URL must be set in the frontend environment");
+}
 
 export function getToken() {
   return localStorage.getItem("token");

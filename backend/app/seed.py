@@ -5,6 +5,7 @@ All passwords are: pulse123
 from .db import Base, engine, SessionLocal
 from . import models
 from .auth import hash_password
+from .services.questions import questions_for
 
 PEOPLE_NORTHWIND = [
     # name, email, department, role, job_role, seniority
@@ -71,18 +72,51 @@ def run():
     add_people(bp, bp_depts, [("Ravi Kapoor", "ravi@consult.test", None, "admin", "manager", "senior")])
     db.flush()
 
-    # Some existing results so dashboards aren't empty
-    def answer(email, org, qid, text, score, reason=None, flags=None):
+    # Completed sample diagnostics so employee reports and admin dashboards
+    # demonstrate the submission-based data model.
+    def submit_demo(email, org, overrides):
         m = db.query(models.Membership).filter_by(user_id=users[email].id, org_id=org.id).first()
-        db.add(models.Response(membership_id=m.id, question_id=qid, answer=text, score=score, reason=reason, flags=flags or []))
+        submission = models.DiagnosticSubmission(membership_id=m.id)
+        db.add(submission)
+        db.flush()
+        for q in questions_for(m.job_role, m.seniority):
+            answer = overrides.get(q["id"])
+            if answer is None and q["type"] == "mcq":
+                option = q["options"][2]
+                answer = (option["text"], option["points"], None, [])
+            elif answer is None:
+                answer = (
+                    "I used an approved AI tool to draft or summarise routine work, then checked the output.",
+                    3,
+                    "Seeded demonstration response.",
+                    [],
+                )
+            text, score, reason, flags = answer
+            db.add(models.Response(
+                membership_id=m.id,
+                submission_id=submission.id,
+                question_id=q["id"],
+                answer=text,
+                score=score,
+                reason=reason,
+                flags=flags,
+            ))
 
-    answer("vikram@northwind.test", nw, "common-freq", "Daily", 4)
-    answer("vikram@northwind.test", nw, "common-open", "Used ChatGPT to draft 20 follow-up emails and edited each one.", 4, "Regular use with editing.", [])
-    answer("priya@northwind.test", nw, "common-freq", "A few times a month", 2)
-    answer("priya@northwind.test", nw, "common-open", "Pasted a customer's complaint thread into ChatGPT to summarise it.", 3, "Useful summary but shared customer data.", ["customer_data_shared"])
-    answer("tom@bluepeak.test", bp, "common-freq", "A few times a week", 3)
-    answer("kabir@bluepeak.test", bp, "common-open", "Uploaded our full customer refund list to an AI tool to find patterns.", 3, "Good idea, unsafe data handling.", ["customer_data_shared", "confidential_data_shared"])
-    answer("kabir@bluepeak.test", bp, "common-freq", "Daily", 4)
+    submit_demo("vikram@northwind.test", nw, {
+        "common-freq": ("Daily", 4, None, []),
+        "common-open": ("Used ChatGPT to draft 20 follow-up emails and edited each one.", 4, "Regular use with editing.", []),
+    })
+    submit_demo("priya@northwind.test", nw, {
+        "common-freq": ("A few times a month", 2, None, []),
+        "common-open": ("Pasted a customer's complaint thread into ChatGPT to summarise it.", 3, "Useful summary but shared customer data.", ["customer_data_shared"]),
+    })
+    submit_demo("tom@bluepeak.test", bp, {
+        "common-freq": ("A few times a week", 3, None, []),
+    })
+    submit_demo("kabir@bluepeak.test", bp, {
+        "common-freq": ("Daily", 4, None, []),
+        "common-open": ("Uploaded our full customer refund list to an AI tool to find patterns.", 3, "Good idea, unsafe data handling.", ["customer_data_shared", "confidential_data_shared"]),
+    })
 
     db.commit()
     db.close()

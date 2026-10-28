@@ -2,12 +2,12 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import Depends, HTTPException, Header
+from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from . import models
 from .config import SECRET_KEY, TOKEN_HOURS
 from .db import get_db
-from . import models
 
 
 def hash_password(password: str) -> str:
@@ -36,7 +36,9 @@ def _decode(authorization: str | None):
         raise HTTPException(401, "Invalid token")
 
 
-def current_user(authorization: str | None = Header(None), db: Session = Depends(get_db)) -> models.User:
+def current_user(
+    authorization: str | None = Header(None), db: Session = Depends(get_db)
+) -> models.User:
     data = _decode(authorization)
     user = db.get(models.User, int(data["sub"]))
     if not user:
@@ -44,7 +46,9 @@ def current_user(authorization: str | None = Header(None), db: Session = Depends
     return user
 
 
-def current_membership(authorization: str | None = Header(None), db: Session = Depends(get_db)) -> models.Membership:
+def current_membership(
+    authorization: str | None = Header(None), db: Session = Depends(get_db)
+) -> models.Membership:
     """The membership for the organization selected after login."""
     data = _decode(authorization)
     if not data.get("org"):

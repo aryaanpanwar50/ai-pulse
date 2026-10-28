@@ -3,6 +3,12 @@ import pytest
 
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["AI_MODE"] = "mock"
+os.environ["SECRET_KEY"] = "test-only-secret-key-with-32-bytes-minimum"
+os.environ["LLM_API_URL"] = ""
+os.environ["LLM_API_KEY"] = ""
+os.environ["LLM_MODEL"] = ""
+os.environ["TOKEN_HOURS"] = "12"
+os.environ["FRONTEND_URL"] = "http://localhost:5173"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
