@@ -52,7 +52,7 @@ def test_guidance_failure_still_saves_diagnostic(client, monkeypatch, error):
 
 @pytest.mark.parametrize("result", [
     {"feedback": "", "next_steps": ["Review your draft."]},
-    {"feedback": "x" * 601, "next_steps": ["Review your draft."]},
+    {"feedback": "x" * 201, "next_steps": ["Review your draft."]},
     {"feedback": "Feedback", "next_steps": []},
     {"feedback": "Feedback", "next_steps": ["Action"] * 4},
     {"feedback": "Feedback", "next_steps": [" "]},
@@ -70,8 +70,10 @@ def test_invalid_provider_guidance_is_rejected(monkeypatch, result):
         guidance.generate_guidance("support", "junior", [])
 
 
-def test_guidance_provider_receives_only_selected_diagnostic_context(monkeypatch):
+@pytest.mark.parametrize("role", ["support", "engineering", "sales", "manager", "unknown"])
+def test_guidance_provider_receives_only_selected_diagnostic_context(monkeypatch, role):
     from app.services import guidance
+    from app.utils import NEXT_STEPS
 
     captured = []
 
@@ -84,12 +86,17 @@ def test_guidance_provider_receives_only_selected_diagnostic_context(monkeypatch
     monkeypatch.setattr(guidance.llm, "chat_completion", provider)
     answers = [{"question_id": "common-open", "question": "What did you do?",
                 "answer": "I checked a draft.", "score": 4, "flags": []}]
-    result = guidance.generate_guidance("support", "junior", answers)
+    result = guidance.generate_guidance(role, "junior", answers)
     assert result["feedback"] == "You report reviewing drafts."
     assert result["next_steps"] == ["Check factual claims before sending."]
     assert captured[0]["role"] == "system"
     context = json.loads(captured[1]["content"])
-    assert context == {"job_role": "support", "seniority": "junior", "answers": answers}
+    assert context == {
+        "job_role": role,
+        "seniority": "junior",
+        "answers": answers,
+        "reference_next_steps": NEXT_STEPS.get(role, []),
+    }
 
 
 def test_saved_guidance_is_scoped_to_selected_organization(client, monkeypatch):

@@ -118,7 +118,9 @@ python -m pytest
 
 After scoring, live mode makes one additional guidance request at submission time with a 20-second timeout. Valid feedback and one to three actions are stored on the submission. Opening the report never calls the model again. Deleting the submission removes its guidance; submitting a new diagnostic generates new guidance. Existing submissions are not backfilled.
 
-Feedback must be nonempty and no longer than 600 characters. There must be one to three nonempty actions, each at most 240 characters. Incorrect types and extra fields are rejected. If the provider times out or returns invalid guidance, the diagnostic still saves and the report shows guidance as unavailable. Mock mode returns clearly labelled, deterministic sample guidance without a network call.
+The role-based `NEXT_STEPS` lists in `backend/app/utils.py` are supplied as reference examples for live guidance. Only the employee's role list is included; the model adapts relevant suggestions to the answers rather than returning the same fixed list for everyone. The prompt explicitly says these references are possible future actions, not evidence of existing employee behaviour. An unknown role receives an empty reference list rather than another role's advice. Existing saved reports are unchanged; new submissions use the updated prompt.
+
+Feedback is requested as one or two short sentences and must be nonempty and no longer than 200 characters. Line wrapping depends on screen width. There must be one to three nonempty actions, each at most 240 characters. Incorrect types and extra fields are rejected. If the provider times out or returns invalid guidance, the diagnostic still saves and the report shows guidance as unavailable. Mock mode returns clearly labelled, deterministic sample guidance without a network call. Existing saved feedback keeps its original length; the shorter limit applies to new submissions.
 
 The prompt treats answers as untrusted data, requires advice grounded in self-reported answers, and forbids invented policies, tools, or incidents. Format validation cannot prove factual correctness; employees should review the advice. Guidance cannot overwrite the separate scores or risk flags.
 
@@ -130,7 +132,7 @@ I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and
 
 ### Verification
 
-- Backend: `python -m pytest -q` — 68 tests passed.
+- Backend: `python -m pytest -q` — 72 tests passed.
 - Frontend: `npm.cmd run build` — passed.
 - Migration tests cover a fresh database, preservation of legacy answers, and adoption of a database that already has the new schema.
 - Saved-average tests cover full-precision storage, rounded report output, reading saved values instead of recalculating answer scores, deletion/resubmission, and migration backfill that preserves answers and guidance while excluding unrelated rows.
@@ -139,6 +141,7 @@ I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and
 - Dashboard privacy tests first failed against the unsuppressed API. They now cover zero, one, four, and five completed respondents; exclusion of small-team risk contributions; eligible teams without risks; organization isolation; unaffected personal reports; and immediate suppression on the next read after deletion reduces five completions to four.
 - Password regression tests first failed because identical passwords had identical hashes and legacy logins did not upgrade them. They now cover random salts, correct/wrong passwords, salt tampering, Unicode and whitespace preservation, malformed hashes, successful legacy upgrades, unchanged hashes on failed login, and stable hashes on later logins.
 - Live guidance was demonstrated manually; automated provider tests use simulated responses and cannot prove the quality of every live model response.
+- Role-reference tests check Support, Engineering, Sales, Manager, and unknown-role prompts. A live request with synthetic Support answers also returned valid guidance using the reference themes of avoiding customer-data sharing and reviewing drafted replies; no saved employee data was used or changed.
 
 ### Implementation file map
 
