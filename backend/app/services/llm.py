@@ -34,14 +34,21 @@ def score_answer(question: str, answer: str) -> str:
     """Returns the raw text the model produced."""
     if AI_MODE == "mock":
         return _mock(answer)
+    return chat_completion([
+        {"role": "user", "content": PROMPT.format(question=question, answer=answer)}
+    ])
+
+
+def chat_completion(messages: list[dict], *, timeout: float = 60) -> str:
+    """Call the configured provider; callers supply their own task prompt."""
     r = httpx.post(
         LLM_API_URL,
         headers={"Authorization": f"Bearer {LLM_API_KEY}"},
         json={
             "model": LLM_MODEL,
-            "messages": [{"role": "user", "content": PROMPT.format(question=question, answer=answer)}],
+            "messages": messages,
         },
-        timeout=60,
+        timeout=timeout,
     )
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]

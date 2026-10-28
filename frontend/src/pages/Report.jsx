@@ -41,8 +41,16 @@ export default function Report({ onBack, onDeleted }) {
       <p>Average score: {report.average_score ?? "Not assessed"}</p>
       <h3>Risks</h3>
       {report.risks.length ? <ul>{report.risks.map((risk) => <li key={risk}>{risk}</li>)}</ul> : <p>No risks identified.</p>}
-      <h3>Next steps</h3>
-      <ul>{report.next_steps.map((step) => <li key={step}>{step}</li>)}</ul>
+      <h3>Personalized guidance</h3>
+      {report.feedback ? (
+        <>
+          <p>{report.feedback.replace(/\s*\u2014\s*/g, ", ")}</p>
+          <h3>Next steps</h3>
+          <ul>{report.next_steps.map((step) => <li key={step}>{step.replace(/\s*\u2014\s*/g, ", ")}</li>)}</ul>
+        </>
+      ) : (
+        <p>Personalized guidance is unavailable for this submission. Your score and risks are still available.</p>
+      )}
       {error && <p className="error">{error}</p>}
       <div className="actions">
         <button onClick={onBack} disabled={deleting}>Back</button>

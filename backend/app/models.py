@@ -66,6 +66,8 @@ class DiagnosticSubmission(Base):
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_steps: Mapped[list | None] = mapped_column(JSON, nullable=True)
     membership = relationship("Membership", back_populates="submission")
     responses = relationship(
         "Response", back_populates="submission", cascade="all, delete-orphan"

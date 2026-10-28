@@ -25,4 +25,4 @@ def my_report(
         .order_by(models.Response.id)
         .all()
     )
-    return build_report(m, responses)
+    return build_report(m, responses, submission)

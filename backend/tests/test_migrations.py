@@ -20,7 +20,28 @@ def test_fresh_database_upgrades_to_head(tmp_path):
     inspector = inspect(engine)
     assert "diagnostic_submissions" in inspector.get_table_names()
     assert "submission_id" in {column["name"] for column in inspector.get_columns("responses")}
+    assert {"feedback", "next_steps"} <= {column["name"] for column in inspector.get_columns("diagnostic_submissions")}
     assert any(index["name"] == "uq_response_submission_question" for index in inspector.get_indexes("responses"))
+    engine.dispose()
+
+
+def test_guidance_migration_preserves_existing_submissions(tmp_path):
+    database = tmp_path / "before_guidance.db"
+    url = f"sqlite:///{database.as_posix()}"
+    config = alembic_config(url)
+    command.upgrade(config, "0002_diagnostic_submissions")
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO organizations (id, name) VALUES (1, 'Org')"))
+        connection.execute(text("INSERT INTO users (id, email, name, password_hash) VALUES (1, 'u@test', 'User', 'hash')"))
+        connection.execute(text("INSERT INTO memberships (id, user_id, org_id, role, job_role, seniority) VALUES (1, 1, 1, 'employee', 'support', 'junior')"))
+        connection.execute(text("INSERT INTO diagnostic_submissions (id, membership_id, submitted_at) VALUES (1, 1, CURRENT_TIMESTAMP)"))
+    engine.dispose()
+    command.upgrade(config, "head")
+    engine = create_engine(url)
+    with engine.connect() as connection:
+        row = connection.execute(text("SELECT membership_id, feedback, next_steps FROM diagnostic_submissions")).one()
+        assert row == (1, None, None)
     engine.dispose()
 
 

@@ -1,4 +1,5 @@
 import math
+import logging
 from datetime import datetime, timezone
 
 import httpx
@@ -10,11 +11,13 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..auth import current_membership
 from ..db import get_db
-from ..services.questions import load_questions, questions_for
+from ..services.questions import questions_for
 from ..services.scoring import score_open_answer
+from ..services.guidance import generate_guidance
 from ..utils import ALLOWED_FLAGS
 
 router = APIRouter(prefix="/diagnostic", tags=["diagnostic"])
+logger = logging.getLogger(__name__)
 
 
 class AnswerIn(BaseModel):
@@ -122,9 +125,25 @@ def submit(
             response["flags"] = flags
         scored_answers.append(response)
 
+    guidance = None
+    try:
+        guidance = generate_guidance(m.job_role, m.seniority, [
+            {"question_id": response["question_id"],
+             "question": assigned[response["question_id"]]["text"],
+             "answer": response["answer"], "score": response["score"],
+             "flags": response["flags"]}
+            for response in scored_answers
+        ])
+    except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError, IndexError) as exc:
+        # Optional guidance must not discard an otherwise valid diagnostic.
+        # Log only the failure type, never employee answers or provider payloads.
+        logger.warning("Personal guidance unavailable (%s)", type(exc).__name__)
+
     submission = models.DiagnosticSubmission(
         membership_id=m.id,
         submitted_at=datetime.now(timezone.utc),
+        feedback=guidance["feedback"] if guidance else None,
+        next_steps=guidance["next_steps"] if guidance else None,
     )
     db.add(submission)
     try:
