@@ -5,7 +5,7 @@ AI Pulse helps a company understand how well its people use AI at work, team by 
 - **Employees** sign in, pick their organization, and take a short diagnostic. Questions adapt to their job role and seniority. Open-ended answers are scored by an LLM.
 - **Each employee** can submit one diagnostic per organization, see a submitted status, open their personal report, and delete that organization's response from the report view if they choose to retake it.
 - **Personal reports** include feedback and one to three recommended actions generated at submission time and saved with that submission.
-- **Company admins** see a dashboard of AI maturity by department and the top risks across the company.
+- **Company admins** see department participation counts. Scores, maturity levels, and risk contributions are shown only for departments with at least five completed diagnostics.
 - Some users (consultants, group-company HR) belong to **more than one organization** and choose one after login.
 
 This codebase was started by a previous developer who has since left. It runs, but it is unfinished, and we are not confident in all of it.
@@ -89,7 +89,8 @@ python -m pytest
 - The dashboard accepted an `org_id` from the URL but did not check that it matched the organization in the admin's token. The route now rejects a request for another organization, and a regression test covers the cross-organization case.
 - The dashboard counted anyone with at least one answer as a respondent and divided answer-score totals by department headcount. It now counts completed submissions and averages each employee's question scores before averaging employees.
 - The report and dashboard used different maturity thresholds. Both now use `utils.maturity_level`, with cutoffs at 2, 3, and 4. Allowed risk identifiers are also shared by the LLM prompt and validation.
-- Risk totals counted repeated flags from one employee more than once. A set now combines flags across that employee's answers, so each employee contributes once per risk.
+- Risk totals counted repeated flags from one employee more than once. A set now combines flags across that employee's answers, so each employee in an eligible department contributes once per risk.
+- Small departments exposed scores and risk contributions from too few people. The backend now withholds scores and levels below five completed memberships, and excludes those departments from the organization risk summary. The UI explains the response minimum, rather than implying no risks exist when results are suppressed.
 - Answers were stored as unrelated rows, so repeat submissions could be confused with one complete diagnostic. A submission now groups one complete role- and seniority-specific answer set per organization membership. Incomplete submissions are rejected and a second submission returns `409` until the existing one is deleted.
 - Employees now see a submitted status after organization selection, can open the report, and can delete the response from the report view. Deleting a response removes its report data from subsequent reads.
 - The admin dashboard's raw JSON placeholder has been replaced by a department table and top-risk list, with loading and error states.
@@ -103,13 +104,13 @@ python -m pytest
 
 ### How I handled the client's request and what I would ask
 
-- **Small groups:** The five-person privacy threshold is **not implemented yet**. Each department's scores and risks must be hidden or pooled until at least five distinct people have completed the diagnostic. Organization-wide risk totals must also avoid revealing risks from suppressed groups. This remains a rollout blocker.
+- **Small groups: implemented by hiding results.** Eligibility uses distinct memberships with completed submissions, not headcount or answer-row counts. Below five completions, the API returns `average_score: null`, `level: null`, and `suppressed: true`. Department names, headcounts, and completion counts remain visible. Scores and risks from suppressed departments are excluded from the risk summary, so it cannot reveal them through subtraction from company totals. The response includes the minimum, the risk-summary scope, and whether any department qualifies. An empty eligible summary and a suppressed summary have different UI messages. Employees can always see their own report. Departments with fewer than five employees remain suppressed; pooling is not implemented.
 - **Right to delete:** Employees can delete the selected organization's submission, answers, report data, and personalized guidance themselves after opening the report. Subsequent report and dashboard reads exclude deleted data. An already-open dashboard requires a refresh; other browser sessions do not update automatically.
-- **Questions for HR:** Should small departments be hidden or safely pooled under "Other teams"? Does completion mean answering every question assigned to an employee's role and seniority, as the current implementation requires?
+- **Questions for HR:** Is hiding small departments sufficient, or would a future safely pooled "Other teams" view be more useful? Does completion mean answering every question assigned to an employee's role and seniority, as the current implementation requires?
 
 ### What I deliberately left
 
-- Small-group score and risk suppression/pooling is deferred, so the current admin dashboard is not ready for the client's rollout.
+- Pooling small departments into "Other teams" is deferred; the required privacy protection currently uses suppression instead. Existing demo departments are below the five-completion minimum and will show participation counts with withheld results.
 - Password hashing still uses plain SHA-256; upgrading it to an adaptive password hash is deferred.
 - `/auth/select-org` still issues a scoped token before checking membership. Protected endpoints check membership, but selection itself should reject unauthorized organizations before issuing a token.
 - Provider data handling needs review before production. Live scoring sends open-ended answers; guidance additionally sends the selected diagnostic's questions, answers, scores, flags, job role, and seniority. Names, emails, and other organizations' submissions are not added to the guidance request, but free text may contain sensitive information.
@@ -132,11 +133,12 @@ I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and
 
 ### Verification
 
-- Backend: `python -m pytest -q` — 51 tests passed.
+- Backend: `python -m pytest -q` — 58 tests passed.
 - Frontend: `npm.cmd run build` — passed.
 - Migration tests cover a fresh database, preservation of legacy answers, and adoption of a database that already has the new schema.
 - Local schema verification: `cd backend` then `alembic check` reports no new upgrade operations; the migrated database matches the current models.
 - Guidance tests cover generation once at submission, stable report reads, deletion and resubmission, invalid-output rejection, timeout handling, organization isolation, and preservation of older submissions during migration.
+- Dashboard privacy tests first failed against the unsuppressed API. They now cover zero, one, four, and five completed respondents; exclusion of small-team risk contributions; eligible teams without risks; organization isolation; unaffected personal reports; and immediate suppression on the next read after deletion reduces five completions to four.
 - Live guidance was demonstrated manually; automated provider tests use simulated responses and cannot prove the quality of every live model response.
 
 ### Implementation file map
@@ -147,6 +149,7 @@ I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and
 | Submission status, atomic answer/submission deletion, permission scoping | [diagnostic.py](backend/app/routes/diagnostic.py), [auth.py](backend/app/auth.py) |
 | Saved reports without regeneration, feedback deletion with the submission | [reports.py](backend/app/routes/reports.py), [reporting.py](backend/app/services/reporting.py) |
 | Dashboard organization check, completed-employee averages, unique employees per risk | [dashboard.py](backend/app/routes/dashboard.py) |
+| Five-completion suppression and eligible-department risk scope | [dashboard.py](backend/app/routes/dashboard.py), [Dashboard.jsx](frontend/src/pages/Dashboard.jsx), [privacy tests](backend/tests/test_dashboard_privacy.py) |
 | Shared maturity thresholds and allowed risk identifiers | [utils.py](backend/app/utils.py), [llm.py](backend/app/services/llm.py), [diagnostic.py](backend/app/routes/diagnostic.py) |
 | Mock/live scoring, output parsing, valid mock examples | [llm.py](backend/app/services/llm.py), [scoring.py](backend/app/services/scoring.py), [mock fixtures](backend/data/mock_ai_responses.json) |
 | Personalized guidance, strict output validation, optional-failure behavior | [guidance.py](backend/app/services/guidance.py), [diagnostic.py](backend/app/routes/diagnostic.py) |
@@ -159,4 +162,4 @@ I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and
 | Correct Docker entry point, environment-file exclusion, declared dependencies | [Dockerfile](backend/Dockerfile), [.dockerignore](backend/.dockerignore), [.gitignore](.gitignore), [requirements.txt](backend/requirements.txt) |
 | Regression evidence for API behavior, isolation, guidance, migrations, configuration, pooling, and seniority | [backend tests](backend/tests) |
 
-Presence of these changes does not mean the deferred requirements above are complete. In particular, adaptive password hashing, membership validation at organization selection, and small-group privacy suppression are still outstanding.
+Presence of these changes does not mean every production concern is resolved. Adaptive password hashing, membership validation at organization selection, and external-provider data handling still need attention. Small-group privacy suppression is implemented.

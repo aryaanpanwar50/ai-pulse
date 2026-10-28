@@ -81,8 +81,16 @@ export default function Dashboard({ org }) {
                 <th scope="row">{department.department}</th>
                 <td>{department.employees}</td>
                 <td>{department.responded}</td>
-                <td>{formatScore(department.average_score)}</td>
-                <td>{department.level}</td>
+                {department.suppressed ? (
+                  <td colSpan={2}>
+                    At least {data.minimum_respondents} completed responses are needed to display results.
+                  </td>
+                ) : (
+                  <>
+                    <td>{formatScore(department.average_score)}</td>
+                    <td>{department.level}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
@@ -91,8 +99,13 @@ export default function Dashboard({ org }) {
 
       <section className="dashboard-risks" aria-labelledby="dashboard-risks-title">
         <h3 id="dashboard-risks-title">Top risks</h3>
-        {data.top_risks.length === 0 ? (
-          <p className="dashboard-empty">No reported risks.</p>
+        <p className="dashboard-empty">
+          Only includes departments with at least {data.minimum_respondents} completed responses.
+        </p>
+        {!data.risk_summary_available ? (
+          <p>Not enough responses to display risk insights.</p>
+        ) : data.top_risks.length === 0 ? (
+          <p>No reported risks in departments meeting the minimum.</p>
         ) : (
           <ul className="dashboard-risk-list">
             {data.top_risks.map(([flag, count]) => (

@@ -7,6 +7,7 @@ from ..db import get_db
 from ..utils import maturity_level
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+MIN_RESPONDENTS = 5
 
 
 @router.get("")
@@ -26,23 +27,29 @@ def org_dashboard(
         raise HTTPException(404, "Organization not found")
 
     members = db.query(models.Membership).filter_by(org_id=org_id).all()
+    submissions = (
+        db.query(models.DiagnosticSubmission)
+        .join(models.Membership, models.DiagnosticSubmission.membership_id == models.Membership.id)
+        .filter(models.Membership.org_id == org_id)
+        .all()
+    )
+    submission_by_member = {submission.membership_id: submission for submission in submissions}
     departments = []
     all_flags = {}
+    risk_summary_available = False
     for dept in org.departments:
         dept_members = [member for member in members if member.department_id == dept.id]
+        completed_members = [member for member in dept_members if member.id in submission_by_member]
+        responded = len(completed_members)
+        suppressed = responded < MIN_RESPONDENTS
         employee_averages = []
-        responded = 0
+        if not suppressed:
+            risk_summary_available = True
 
-        for member in dept_members:
-            submission = (
-                db.query(models.DiagnosticSubmission)
-                .filter_by(membership_id=member.id)
-                .first()
-            )
-            if submission is None:
-                continue
-
-            responded += 1
+        # Suppressed teams contribute neither scores nor risks, including to
+        # organization totals. Counts alone remain visible for participation.
+        for member in completed_members if not suppressed else []:
+            submission = submission_by_member[member.id]
             rows = (
                 db.query(models.Response)
                 .filter_by(
@@ -76,13 +83,17 @@ def org_dashboard(
                 "department": dept.name,
                 "employees": len(dept_members),
                 "responded": responded,
+                "suppressed": suppressed,
                 "average_score": round(average, 2) if average is not None else None,
-                "level": maturity_level(average),
+                "level": None if suppressed else maturity_level(average),
             }
         )
 
     return {
         "organization": org.name,
         "departments": departments,
-        "top_risks": sorted(all_flags.items(), key=lambda item: -item[1])[:5],
+        "minimum_respondents": MIN_RESPONDENTS,
+        "risk_summary_available": risk_summary_available,
+        "risk_summary_scope": "departments_meeting_minimum_responses",
+        "top_risks": sorted(all_flags.items(), key=lambda item: (-item[1], item[0]))[:5],
     }

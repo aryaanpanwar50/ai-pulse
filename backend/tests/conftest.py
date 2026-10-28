@@ -30,3 +30,38 @@ def login(client, email, org_name=None):
         token = client.post("/auth/select-org", json={"org_id": org["org_id"]},
                             headers={"Authorization": f"Bearer {token}"}).json()["token"]
     return {"Authorization": f"Bearer {token}"}, data
+
+
+@pytest.fixture()
+def add_completed_respondents(client):
+    """Create completed test diagnostics without invoking an AI provider."""
+    from uuid import uuid4
+    from app import models
+    from app.auth import hash_password
+    from app.db import SessionLocal
+    from app.services.questions import questions_for
+
+    def add(department_name, count, *, score=3.0, flags=(), org_name="Northwind Logistics"):
+        with SessionLocal() as db:
+            org = db.query(models.Organization).filter_by(name=org_name).one()
+            department = db.query(models.Department).filter_by(org_id=org.id, name=department_name).one()
+            for _ in range(count):
+                user = models.User(email=f"respondent-{uuid4().hex}@example.test", name="Test respondent",
+                                   password_hash=hash_password("pulse123"))
+                db.add(user)
+                db.flush()
+                member = models.Membership(user_id=user.id, org_id=org.id, department_id=department.id,
+                                           role="employee", job_role="support", seniority="junior")
+                db.add(member)
+                db.flush()
+                submission = models.DiagnosticSubmission(membership_id=member.id)
+                db.add(submission)
+                db.flush()
+                for question in questions_for(member.job_role, member.seniority):
+                    db.add(models.Response(
+                        membership_id=member.id, submission_id=submission.id,
+                        question_id=question["id"], answer="Test answer", score=score,
+                        flags=list(flags) if question["type"] == "open" else [],
+                    ))
+            db.commit()
+    return add

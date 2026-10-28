@@ -59,14 +59,15 @@ def test_admin_dashboard(client):
     assert len(r.json()["departments"]) == 4
 
 
-def test_dashboard_uses_completed_people_and_employee_level_averages(client):
+def test_dashboard_uses_completed_people_and_employee_level_averages(client, add_completed_respondents):
+    add_completed_respondents("Sales", 4, score=3.29)
     headers, data = login(client, "asha@northwind.test", "Northwind Logistics")
     org_id = data["organizations"][0]["org_id"]
     response = client.get(f"/dashboard?org_id={org_id}", headers=headers)
     assert response.status_code == 200
 
     departments = {dept["department"]: dept for dept in response.json()["departments"]}
-    assert departments["Sales"]["responded"] == 1
+    assert departments["Sales"]["responded"] == 5
     assert departments["Sales"]["average_score"] == 3.29
     assert departments["Engineering"]["responded"] == 0
     assert departments["Engineering"]["average_score"] is None
@@ -80,10 +81,11 @@ def test_admin_cannot_see_other_org(client):
     assert r.status_code == 403
 
 
-def test_dashboard_and_employee_report_use_the_same_maturity_level(client):
+def test_dashboard_and_employee_report_use_the_same_maturity_level(client, add_completed_respondents):
     from app import models
     from app.db import SessionLocal
 
+    add_completed_respondents("Sales", 4, score=3.75)
     with SessionLocal() as db:
         user = db.query(models.User).filter_by(email="vikram@northwind.test").one()
         membership = db.query(models.Membership).filter_by(user_id=user.id).one()
@@ -103,10 +105,12 @@ def test_dashboard_and_employee_report_use_the_same_maturity_level(client):
     assert report["level"] == sales["level"] == "Practitioner"
 
 
-def test_dashboard_counts_each_employee_once_per_risk(client):
+def test_dashboard_counts_each_employee_once_per_risk(client, add_completed_respondents):
     from app import models
     from app.db import SessionLocal
 
+    add_completed_respondents("Sales", 4)
+    add_completed_respondents("Support", 4)
     with SessionLocal() as db:
         for email in ("priya@northwind.test", "vikram@northwind.test"):
             user = db.query(models.User).filter_by(email=email).one()
