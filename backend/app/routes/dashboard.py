@@ -4,20 +4,9 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..auth import current_membership
 from ..db import get_db
+from ..utils import maturity_level
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
-
-
-def level_for(avg):
-    if avg is None:
-        return "Not assessed"
-    if avg < 1.5:
-        return "Beginner"
-    if avg < 2.5:
-        return "Exploring"
-    if avg < 3.5:
-        return "Practitioner"
-    return "Leader"
 
 
 @router.get("")
@@ -63,11 +52,14 @@ def org_dashboard(
                 .all()
             )
             employee_scores = []
+            employee_flags = set()
             for response in rows:
                 if response.score is not None:
                     employee_scores.append(response.score)
-                for flag in response.flags or []:
-                    all_flags[flag] = all_flags.get(flag, 0) + 1
+                employee_flags.update(response.flags or [])
+
+            for flag in employee_flags:
+                all_flags[flag] = all_flags.get(flag, 0) + 1
 
             if employee_scores:
                 employee_averages.append(
@@ -85,7 +77,7 @@ def org_dashboard(
                 "employees": len(dept_members),
                 "responded": responded,
                 "average_score": round(average, 2) if average is not None else None,
-                "level": level_for(average),
+                "level": maturity_level(average),
             }
         )
 

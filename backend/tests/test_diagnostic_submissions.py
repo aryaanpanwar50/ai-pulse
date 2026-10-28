@@ -3,6 +3,7 @@ from pathlib import Path
 
 from tests.conftest import login
 from app.services.llm import _mock
+from app.utils import ALLOWED_FLAGS
 
 
 def make_complete_payload(client, headers):
@@ -19,12 +20,6 @@ def test_mock_scoring_responses_follow_the_scoring_contract():
     canned = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(canned, list)
     assert canned
-    allowed_flags = {
-        "customer_data_shared",
-        "confidential_data_shared",
-        "unreviewed_output",
-        "policy_unaware",
-    }
 
     for raw in canned:
         result = json.loads(raw)
@@ -33,7 +28,7 @@ def test_mock_scoring_responses_follow_the_scoring_contract():
         assert 1 <= result["score"] <= 5
         assert isinstance(result["reason"], str)
         assert isinstance(result["flags"], list)
-        assert set(result["flags"]) <= allowed_flags
+        assert set(result["flags"]) <= ALLOWED_FLAGS
 
     assert any(json.loads(raw)["flags"] == [] for raw in canned)
 

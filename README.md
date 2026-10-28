@@ -85,6 +85,8 @@ python -m pytest
 
 - The dashboard accepted an `org_id` from the URL but did not check that it matched the organization in the admin's token. The route now rejects a request for another organization, and a regression test covers the cross-organization case.
 - The dashboard counted anyone with at least one answer as a respondent and divided answer-score totals by department headcount. It now counts completed submissions and averages each employee's question scores before averaging employees.
+- Dashboard and employee reports use the same maturity-level function, with cutoffs at 2, 3, and 4. Allowed risk identifiers are shared by the LLM prompt and response validation.
+- Dashboard risk counts represent completed respondents with each risk; repeated flags across one employee's answers count once per risk.
 - Answers were stored as unrelated rows, so repeat submissions could be confused with one complete diagnostic. A submission now groups one complete role- and seniority-specific answer set per organization membership. Incomplete submissions are rejected and a second submission returns `409` until the existing one is deleted.
 - Employees now see a submitted status after organization selection, can open the report, and can delete the response from the report view. Deleting a response removes its report data from subsequent reads.
 - The admin dashboard now presents department headcount, response count, average score, maturity level, and top risks in a readable table and list.
@@ -114,6 +116,6 @@ I used AI assistance to inspect the code, propose and implement changes, write t
 
 ### Verification
 
-- Backend: `python -m pytest -q` — 33 tests passed.
+- Backend: `python -m pytest -q` — 36 tests passed.
 - Frontend: `npm.cmd run build` — passed.
 - Migration tests cover a fresh database, preservation of legacy answers, and adoption of a database that already has the new schema.

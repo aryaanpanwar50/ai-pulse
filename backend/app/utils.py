@@ -1,3 +1,11 @@
+ALLOWED_FLAGS = frozenset({
+    "customer_data_shared",
+    "confidential_data_shared",
+    "unreviewed_output",
+    "policy_unaware",
+})
+
+
 def maturity_level(avg_score):
     if avg_score is None:
         return "Not assessed"

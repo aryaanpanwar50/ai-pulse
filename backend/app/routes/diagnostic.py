@@ -12,14 +12,9 @@ from ..auth import current_membership
 from ..db import get_db
 from ..services.questions import load_questions, questions_for
 from ..services.scoring import score_open_answer
+from ..utils import ALLOWED_FLAGS
 
 router = APIRouter(prefix="/diagnostic", tags=["diagnostic"])
-ALLOWED_FLAGS = {
-    "customer_data_shared",
-    "confidential_data_shared",
-    "unreviewed_output",
-    "policy_unaware",
-}
 
 
 class AnswerIn(BaseModel):
