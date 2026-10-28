@@ -94,4 +94,38 @@ def test_existing_current_schema_can_be_stamped_then_upgraded(tmp_path):
     engine = create_engine(url)
     assert "diagnostic_submissions" in inspect(engine).get_table_names()
     assert "submission_id" in {column["name"] for column in inspect(engine).get_columns("responses")}
+    assert "average_score" in {column["name"] for column in inspect(engine).get_columns("diagnostic_submissions")}
+    engine.dispose()
+
+
+def test_submission_average_migration_backfills_only_linked_owned_scores(tmp_path):
+    url = f"sqlite:///{(tmp_path / 'before_averages.db').as_posix()}"
+    config = alembic_config(url)
+    command.upgrade(config, "0003_personal_guidance")
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO organizations (id, name) VALUES (1, 'Org')"))
+        connection.execute(text("INSERT INTO users (id, email, name, password_hash) VALUES (1, 'u@test', 'User', 'hash')"))
+        connection.execute(text("INSERT INTO memberships (id, user_id, org_id, role, job_role, seniority) VALUES (:id, 1, 1, 'employee', 'support', 'junior')"), [{"id": 1}, {"id": 2}])
+        connection.execute(text("INSERT INTO diagnostic_submissions (id, membership_id, submitted_at, feedback) VALUES (:id, :id, CURRENT_TIMESTAMP, 'Saved feedback')"), [{"id": 1}, {"id": 2}])
+        connection.execute(text(
+            "INSERT INTO responses (membership_id, submission_id, question_id, answer, score, created_at) "
+            "VALUES (:member, :submission, :question, 'Test', :score, CURRENT_TIMESTAMP)"
+        ), [
+            {"member": 1, "submission": 1, "question": "q1", "score": 1},
+            {"member": 1, "submission": 1, "question": "q2", "score": 5},
+            {"member": 1, "submission": 1, "question": "q3", "score": 4},
+            {"member": 1, "submission": 1, "question": "q4", "score": None},
+            {"member": 1, "submission": None, "question": "legacy", "score": 5},
+            {"member": 2, "submission": 1, "question": "wrong-owner", "score": 5},
+        ])
+    engine.dispose()
+    command.upgrade(config, "head")
+    engine = create_engine(url)
+    with engine.connect() as connection:
+        rows = connection.execute(text("SELECT average_score, feedback FROM diagnostic_submissions ORDER BY id")).all()
+        assert abs(rows[0][0] - 10 / 3) < 1e-10
+        assert rows[0][1] == "Saved feedback"
+        assert rows[1][0] is None
+        assert connection.execute(text("SELECT COUNT(*) FROM responses")).scalar_one() == 6
     engine.dispose()

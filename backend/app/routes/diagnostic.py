@@ -125,6 +125,9 @@ def submit(
             response["flags"] = flags
         scored_answers.append(response)
 
+    scores = [answer["score"] for answer in scored_answers if answer["score"] is not None]
+    average_score = sum(scores) / len(scores) if scores else None
+
     guidance = None
     try:
         guidance = generate_guidance(m.job_role, m.seniority, [
@@ -142,6 +145,7 @@ def submit(
     submission = models.DiagnosticSubmission(
         membership_id=m.id,
         submitted_at=datetime.now(timezone.utc),
+        average_score=average_score,
         feedback=guidance["feedback"] if guidance else None,
         next_steps=guidance["next_steps"] if guidance else None,
     )

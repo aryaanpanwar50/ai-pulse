@@ -79,6 +79,7 @@ def run():
         submission = models.DiagnosticSubmission(membership_id=m.id)
         db.add(submission)
         db.flush()
+        scores = []
         for q in questions_for(m.job_role, m.seniority):
             answer = overrides.get(q["id"])
             if answer is None and q["type"] == "mcq":
@@ -92,6 +93,8 @@ def run():
                     [],
                 )
             text, score, reason, flags = answer
+            if score is not None:
+                scores.append(score)
             db.add(models.Response(
                 membership_id=m.id,
                 submission_id=submission.id,
@@ -101,6 +104,7 @@ def run():
                 reason=reason,
                 flags=flags,
             ))
+        submission.average_score = sum(scores) / len(scores) if scores else None
 
     submit_demo("vikram@northwind.test", nw, {
         "common-freq": ("Daily", 4, None, []),

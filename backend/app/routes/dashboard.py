@@ -51,27 +51,22 @@ def org_dashboard(
         for member in completed_members if not suppressed else []:
             submission = submission_by_member[member.id]
             rows = (
-                db.query(models.Response)
+                db.query(models.Response.flags)
                 .filter_by(
                     membership_id=member.id,
                     submission_id=submission.id,
                 )
                 .all()
             )
-            employee_scores = []
             employee_flags = set()
             for response in rows:
-                if response.score is not None:
-                    employee_scores.append(response.score)
                 employee_flags.update(response.flags or [])
 
             for flag in employee_flags:
                 all_flags[flag] = all_flags.get(flag, 0) + 1
 
-            if employee_scores:
-                employee_averages.append(
-                    sum(employee_scores) / len(employee_scores)
-                )
+            if submission.average_score is not None:
+                employee_averages.append(submission.average_score)
 
         average = (
             sum(employee_averages) / len(employee_averages)

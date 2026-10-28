@@ -54,7 +54,7 @@ def add_completed_respondents(client):
                                            role="employee", job_role="support", seniority="junior")
                 db.add(member)
                 db.flush()
-                submission = models.DiagnosticSubmission(membership_id=member.id)
+                submission = models.DiagnosticSubmission(membership_id=member.id, average_score=score)
                 db.add(submission)
                 db.flush()
                 for question in questions_for(member.job_role, member.seniority):

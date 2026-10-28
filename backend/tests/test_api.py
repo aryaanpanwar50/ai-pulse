@@ -92,6 +92,9 @@ def test_dashboard_and_employee_report_use_the_same_maturity_level(client, add_c
         db.query(models.Response).filter_by(membership_id=membership.id).update(
             {"score": 3.75}, synchronize_session=False
         )
+        db.query(models.DiagnosticSubmission).filter_by(membership_id=membership.id).update(
+            {"average_score": 3.75}, synchronize_session=False
+        )
         db.commit()
 
     employee_headers, _ = login(client, "vikram@northwind.test", "Northwind Logistics")

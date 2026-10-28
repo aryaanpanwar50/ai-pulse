@@ -7,8 +7,7 @@ def build_report(
     responses: list[models.Response],
     submission: models.DiagnosticSubmission,
 ) -> dict:
-    scores = [response.score for response in responses if response.score is not None]
-    average = sum(scores) / len(scores) if scores else None
+    average = submission.average_score
     risks = sorted({flag for response in responses for flag in (response.flags or [])})
     return {
         "name": membership.user.name,
