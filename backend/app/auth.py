@@ -1,4 +1,6 @@
 import hashlib
+import hmac
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -11,11 +13,28 @@ from .db import get_db
 
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Store the scheme, a random 16-byte salt, and the salted SHA-256 digest."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.sha256(salt + password.encode("utf-8")).hexdigest()
+    return f"sha256${salt.hex()}${digest}"
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return hash_password(password) == hashed
+    try:
+        # Older accounts have only a digest, without a salt or separator.
+        if "$" not in hashed:
+            digest = hashlib.sha256(password.encode("utf-8")).hexdigest()
+            return hmac.compare_digest(digest, hashed)
+
+        algorithm, salt_hex, stored_digest = hashed.split("$")
+        salt = bytes.fromhex(salt_hex)
+        if algorithm != "sha256" or len(salt) != 16:
+            return False
+        digest = hashlib.sha256(salt + password.encode("utf-8")).hexdigest()
+        return hmac.compare_digest(digest, stored_digest)
+    except (ValueError, TypeError, AttributeError):
+        # Malformed stored values should fail login rather than crash it.
+        return False
 
 
 def make_token(user_id: int, org_id: int | None = None) -> str:

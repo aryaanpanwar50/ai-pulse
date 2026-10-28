@@ -97,6 +97,7 @@ python -m pytest
 - Mock scoring data included malformed results, including out-of-range scores. These fixtures are now schema-valid; malformed model output is still rejected before answers are saved.
 - Schema changes are explicit Alembic revisions rather than DDL run when the API starts. See the migration and legacy database instructions above.
 - The known JWT secret fallback and wildcard CORS were removed. Required configuration is validated at startup, and CORS permits only the configured frontend origin, required methods, and required headers.
+- Passwords previously used unsalted SHA-256. New hashes use an independent random 16-byte salt, stored as `sha256$<salt_hex>$<digest_hex>` in the existing password-hash column. Verification uses constant-time digest comparison. Existing unsalted hashes remain readable and are replaced with salted hashes after a successful login; failed logins leave them unchanged. The seeder automatically uses the new helper for future demo data, without requiring existing data to be reset. No schema migration or extra dependency is needed.
 - Local `.env` files are ignored, the previously tracked backend `.env` was removed from the repository's current tree, and Docker excludes local environment files from the documented build context.
 - The Docker command now starts `app.main:app`, matching the package layout.
 - Seniority filtering compared words alphabetically. It now uses explicit junior, mid, senior, and lead ranks.
@@ -108,12 +109,6 @@ python -m pytest
 - **Right to delete:** Employees can delete the selected organization's submission, answers, report data, and personalized guidance themselves after opening the report. Subsequent report and dashboard reads exclude deleted data. An already-open dashboard requires a refresh; other browser sessions do not update automatically.
 - **Questions for HR:** Is hiding small departments sufficient, or would a future safely pooled "Other teams" view be more useful? Does completion mean answering every question assigned to an employee's role and seniority, as the current implementation requires?
 
-### What I deliberately left
-
-- Pooling small departments into "Other teams" is deferred; the required privacy protection currently uses suppression instead. Existing demo departments are below the five-completion minimum and will show participation counts with withheld results.
-- Password hashing still uses plain SHA-256; upgrading it to an adaptive password hash is deferred.
-- `/auth/select-org` still issues a scoped token before checking membership. Protected endpoints check membership, but selection itself should reject unauthorized organizations before issuing a token.
-- Provider data handling needs review before production. Live scoring sends open-ended answers; guidance additionally sends the selected diagnostic's questions, answers, scores, flags, job role, and seniority. Names, emails, and other organizations' submissions are not added to the guidance request, but free text may contain sensitive information.
 
 ### Your own idea: the problem it solves and why you picked it
 
@@ -133,12 +128,13 @@ I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and
 
 ### Verification
 
-- Backend: `python -m pytest -q` — 58 tests passed.
+- Backend: `python -m pytest -q` — 65 tests passed.
 - Frontend: `npm.cmd run build` — passed.
 - Migration tests cover a fresh database, preservation of legacy answers, and adoption of a database that already has the new schema.
 - Local schema verification: `cd backend` then `alembic check` reports no new upgrade operations; the migrated database matches the current models.
 - Guidance tests cover generation once at submission, stable report reads, deletion and resubmission, invalid-output rejection, timeout handling, organization isolation, and preservation of older submissions during migration.
 - Dashboard privacy tests first failed against the unsuppressed API. They now cover zero, one, four, and five completed respondents; exclusion of small-team risk contributions; eligible teams without risks; organization isolation; unaffected personal reports; and immediate suppression on the next read after deletion reduces five completions to four.
+- Password regression tests first failed because identical passwords had identical hashes and legacy logins did not upgrade them. They now cover random salts, correct/wrong passwords, salt tampering, Unicode and whitespace preservation, malformed hashes, successful legacy upgrades, unchanged hashes on failed login, and stable hashes on later logins.
 - Live guidance was demonstrated manually; automated provider tests use simulated responses and cannot prove the quality of every live model response.
 
 ### Implementation file map
@@ -154,6 +150,7 @@ I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and
 | Mock/live scoring, output parsing, valid mock examples | [llm.py](backend/app/services/llm.py), [scoring.py](backend/app/services/scoring.py), [mock fixtures](backend/data/mock_ai_responses.json) |
 | Personalized guidance, strict output validation, optional-failure behavior | [guidance.py](backend/app/services/guidance.py), [diagnostic.py](backend/app/routes/diagnostic.py) |
 | Required settings, JWT secret length, single-origin CORS, explicit API URL | [config.py](backend/app/config.py), [main.py](backend/app/main.py), [api.js](frontend/src/api.js), backend/frontend `.env.example` files |
+| Random salted password hashes, constant-time verification, legacy upgrade after successful login | [auth.py](backend/app/auth.py), [auth_routes.py](backend/app/routes/auth_routes.py), [password tests](backend/tests/test_password_hashing.py) |
 | Explicit migrations and existing-data preservation | [Alembic configuration](backend/alembic.ini), [migration environment](backend/alembic/env.py), [versioned migrations](backend/alembic/versions) |
 | Pooled sessions, SQLite lock wait, submission-compatible demo data | [db.py](backend/app/db.py), [seed.py](backend/app/seed.py) |
 | Role/seniority question selection | [questions.py](backend/app/services/questions.py) |
