@@ -93,7 +93,14 @@ def submit(
         else:
             try:
                 result = score_open_answer(question["text"], answer.answer)
-            except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError):
+            except (
+                httpx.HTTPError,
+                httpx.InvalidURL,
+                ValueError,
+                TypeError,
+                AttributeError,
+                KeyError,
+            ):
                 raise HTTPException(
                     502, "AI scoring failed; no answers were saved"
                 ) from None

@@ -171,3 +171,31 @@ def test_invalid_ai_score_leaves_no_partial_submission(client, monkeypatch):
     )
     assert response.status_code == 502
     assert client.get("/diagnostic/me", headers=headers).json()["submitted"] is False
+
+
+def test_malformed_live_scoring_url_returns_502_without_saving(client, monkeypatch):
+    from app import models
+    from app.db import SessionLocal
+
+    monkeypatch.setattr("app.services.llm.AI_MODE", "live")
+    monkeypatch.setattr("app.services.llm.LLM_API_URL", "http://localhost:invalid")
+    headers, _ = login(client, "sara@northwind.test", "Northwind Logistics")
+    _, answers = make_complete_payload(client, headers)
+    with SessionLocal() as db:
+        membership = (
+            db.query(models.Membership)
+            .join(models.User)
+            .filter(models.User.email == "sara@northwind.test")
+            .one()
+        )
+        membership_id = membership.id
+
+    response = client.post(
+        "/diagnostic/submit", headers=headers, json={"answers": answers}
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "AI scoring failed; no answers were saved"}
+    with SessionLocal() as db:
+        assert db.query(models.DiagnosticSubmission).filter_by(membership_id=membership_id).count() == 0
+        assert db.query(models.Response).filter_by(membership_id=membership_id).count() == 0
