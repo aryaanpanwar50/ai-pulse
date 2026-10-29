@@ -124,7 +124,7 @@ After scoring, live mode makes one additional guidance request at submission tim
 
 The role-based `NEXT_STEPS` lists in `backend/app/utils.py` are supplied as reference examples for live guidance. Only the employee's role list is included; the model adapts relevant suggestions to the answers rather than returning the same fixed list for everyone. The prompt explicitly says these references are possible future actions, not evidence of existing employee behaviour. An unknown role receives an empty reference list rather than another role's advice. Existing saved reports are unchanged; new submissions use the updated prompt.
 
-Feedback must be nonempty and no longer than 600 characters. There must be one to three nonempty actions, each at most 240 characters. Incorrect types and extra fields are rejected. If the provider times out or returns invalid guidance, the diagnostic still saves and the report shows guidance as unavailable. Mock mode returns clearly labelled, deterministic sample guidance without a network call.
+Feedback must be nonempty and no longer than 200 characters. There must be one to three nonempty actions, each at most 240 characters. Incorrect types and extra fields are rejected. If the provider times out or returns invalid guidance, the diagnostic still saves and the report shows guidance as unavailable. Mock mode returns clearly labelled, deterministic sample guidance without a network call.
 
 The prompt treats answers as untrusted data, requires advice grounded in self-reported answers, and forbids invented policies, tools, or incidents. Format validation cannot prove factual correctness; employees should review the advice. Guidance cannot overwrite the separate scores or risk flags.
 
