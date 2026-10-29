@@ -34,7 +34,7 @@ def get_questions(m: models.Membership = Depends(current_membership)):
     qs = questions_for(m.job_role, m.seniority)
     # don't leak scoring points to the client
     return [
-        {k: v for k, v in q.items() if k != "points"}
+        {k: v for k, v in q.items() if k not in {"points", "flags"}}
         | ({"options": [o["text"] for o in q["options"]]} if q["type"] == "mcq" else {})
         for q in qs
     ]
@@ -90,6 +90,13 @@ def submit(
             if option is None:
                 raise HTTPException(400, f"Invalid option for {question['id']}")
             response["score"] = option["points"]
+            flags = option.get("flags", [])
+            if not isinstance(flags, list) or any(
+                not isinstance(flag, str) or flag not in ALLOWED_FLAGS
+                for flag in flags
+            ):
+                raise HTTPException(500, "Invalid question risk configuration; no answers were saved")
+            response["flags"] = flags
         else:
             try:
                 result = score_open_answer(question["text"], answer.answer)

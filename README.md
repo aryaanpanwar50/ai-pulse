@@ -80,7 +80,7 @@ python -m pytest
 
 ## AI mode
 
-`AI_MODE=mock` uses schema-valid canned scoring responses from `backend/data/mock_ai_responses.json` and deterministic sample guidance. The example environment selects mock mode; the application has no mode fallback. Scores must be in the 1–5 range. Empty risk lists are valid. Invalid scoring output is rejected before answers are saved. Multiple-choice answers currently receive predefined scores only; risk flags come from open-ended answers.
+`AI_MODE=mock` uses schema-valid canned scoring responses from `backend/data/mock_ai_responses.json` and deterministic sample guidance. The example environment selects mock mode; the application has no mode fallback. Scores must be in the 1–5 range. Empty risk lists are valid. Invalid scoring output is rejected before answers are saved. Multiple-choice answers use predefined scores and risk flags, without an AI call: "Use it as is" produces `unreviewed_output`, and "I don't know" the company policy produces `policy_unaware`. Other options default to no flags; data-removal answers do not establish that customer data was actually shared. Open-ended answers continue to receive AI-generated flags. Rules apply to new submissions only; existing saved responses are unchanged. Scoring points and flags are not exposed by the questions API.
 
 `AI_MODE=live` calls `LLM_API_URL` with `LLM_API_KEY` and `LLM_MODEL`.
 
@@ -114,6 +114,7 @@ python -m pytest
 - **Small groups: implemented by hiding results.** Eligibility uses distinct memberships with completed submissions, not headcount or answer-row counts. Below five completions, the API returns `average_score: null`, `level: null`, and `suppressed: true`. Department names, headcounts, and completion counts remain visible. Scores and risks from suppressed departments are excluded from the risk summary, so it cannot reveal them through subtraction from company totals. The response includes the minimum, the risk-summary scope, and whether any department qualifies. An empty eligible summary and a suppressed summary have different UI messages. Employees can always see their own report. Departments with fewer than five employees remain suppressed; pooling is not implemented.
 - **Right to delete:** Employees can delete the selected organization's submission, answers, report data, and personalized guidance themselves after opening the report. Subsequent report and dashboard reads exclude deleted data. An already-open dashboard requires a refresh; other browser sessions do not update automatically.
 - **Questions for HR:** Is hiding small departments sufficient, or would a future safely pooled "Other teams" view be more useful? Does completion mean answering every question assigned to an employee's role and seniority, as the current implementation requires?
+- **Risk-flag question for the client:** What risk flag, if any, should each multiple-choice answer produce? Please confirm a mapping for each question and option, including answers that should remain unflagged. Currently only "Use it as is" → `unreviewed_output` and "I don't know" the policy → `policy_unaware` are mapped. Should "I think so, but I haven't read it" also indicate a policy-awareness gap? Should "Skim it" or rarely removing sensitive details use separate flags for insufficient review or unsafe data handling? These answers should not imply a confirmed data-sharing incident. Low AI usage alone remains unflagged. Written answers also contribute AI-generated flags.
 
 
 ### Your own idea: the problem it solves and why you picked it
@@ -136,7 +137,8 @@ I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and
 
 ### Verification
 
-- Backend: `python -m pytest -q` — 72 tests passed.
+- Backend: `python -m pytest -q` — 77 tests passed.
+- MCQ risk tests cover flagged and unflagged options, unchanged option scores, hidden scoring metadata, invalid rule rejection, combined written/MCQ report flags, and counting each employee once per dashboard risk.
 - Frontend: `npm.cmd run build` — passed.
 - Migration tests cover a fresh database, preservation of legacy answers, and adoption of a database that already has the new schema.
 - Saved-average tests cover full-precision storage, rounded report output, reading saved values instead of recalculating answer scores, deletion/resubmission, and migration backfill that preserves answers and guidance while excluding unrelated rows.
