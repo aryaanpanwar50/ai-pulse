@@ -105,6 +105,10 @@ python -m pytest
 - Seniority filtering compared words alphabetically. It now uses explicit junior, mid, senior, and lead ranks.
 - SQLite connections are reused through the engine pool, with a 30-second lock wait. DB Browser's open transaction caused the local deletion lock; closing it resolved that incident. Increasing the timeout alone does not remove SQLite's concurrency limits.
 
+### What I deliberately left
+
+- Department averages are calculated when the dashboard is requested, rather than stored in the database. This is inexpensive at the current scale and keeps results current after submissions or deletions without maintaining a separate aggregate that could become stale. Each employee's average is still stored with their submission.
+
 ### How I handled the client's request and what I would ask
 
 - **Small groups: implemented by hiding results.** Eligibility uses distinct memberships with completed submissions, not headcount or answer-row counts. Below five completions, the API returns `average_score: null`, `level: null`, and `suppressed: true`. Department names, headcounts, and completion counts remain visible. Scores and risks from suppressed departments are excluded from the risk summary, so it cannot reveal them through subtraction from company totals. The response includes the minimum, the risk-summary scope, and whether any department qualifies. An empty eligible summary and a suppressed summary have different UI messages. Employees can always see their own report. Departments with fewer than five employees remain suppressed; pooling is not implemented.
@@ -120,7 +124,7 @@ After scoring, live mode makes one additional guidance request at submission tim
 
 The role-based `NEXT_STEPS` lists in `backend/app/utils.py` are supplied as reference examples for live guidance. Only the employee's role list is included; the model adapts relevant suggestions to the answers rather than returning the same fixed list for everyone. The prompt explicitly says these references are possible future actions, not evidence of existing employee behaviour. An unknown role receives an empty reference list rather than another role's advice. Existing saved reports are unchanged; new submissions use the updated prompt.
 
-Feedback is requested as one or two short sentences and must be nonempty and no longer than 200 characters. Line wrapping depends on screen width. There must be one to three nonempty actions, each at most 240 characters. Incorrect types and extra fields are rejected. If the provider times out or returns invalid guidance, the diagnostic still saves and the report shows guidance as unavailable. Mock mode returns clearly labelled, deterministic sample guidance without a network call. Existing saved feedback keeps its original length; the shorter limit applies to new submissions.
+Feedback must be nonempty and no longer than 600 characters. There must be one to three nonempty actions, each at most 240 characters. Incorrect types and extra fields are rejected. If the provider times out or returns invalid guidance, the diagnostic still saves and the report shows guidance as unavailable. Mock mode returns clearly labelled, deterministic sample guidance without a network call.
 
 The prompt treats answers as untrusted data, requires advice grounded in self-reported answers, and forbids invented policies, tools, or incidents. Format validation cannot prove factual correctness; employees should review the advice. Guidance cannot overwrite the separate scores or risk flags.
 
