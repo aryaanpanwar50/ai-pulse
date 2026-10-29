@@ -2,9 +2,10 @@
 
 AI Pulse helps a company understand how well its people use AI at work, team by team.
 
-- **Employees** sign in, pick their organization, and take a short diagnostic. Questions adapt to their job role and seniority. One open-ended answer is scored by an LLM.
-- **Each employee** gets a personal report: maturity level, risks, and next steps for their role.
-- **Company admins** see a dashboard of AI maturity by department and the top risks across the company.
+- **Employees** sign in, pick their organization, and take a short diagnostic. Questions adapt to their job role and seniority. Open-ended answers are scored by an LLM.
+- **Each employee** can submit one diagnostic per organization, see a submitted status, open their personal report, and delete that organization's response from the report view if they choose to retake it.
+- **Personal reports** include feedback and one to three recommended actions generated at submission time and saved with that submission.
+- **Company admins** see department participation counts. Scores, maturity levels, and risk contributions are shown only for departments with at least five completed diagnostics.
 - Some users (consultants, group-company HR) belong to **more than one organization** and choose one after login.
 
 This codebase was started by a previous developer who has since left. It runs, but it is unfinished, and we are not confident in all of it.
@@ -22,14 +23,40 @@ Backend:
 ```bash
 cd backend
 pip install -r requirements.txt
-python -m app.seed          # creates demo data, password for all users: pulse123
+# Copy .env.example to .env and set SECRET_KEY to a generated random value.
+# Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+alembic upgrade head       # apply versioned schema migrations
+python -m app.seed          # resets the local database and creates demo data; password: pulse123
 uvicorn app.main:app --reload
 ```
+
+The backend requires explicit `SECRET_KEY`, `DATABASE_URL`, `AI_MODE`, `LLM_API_URL`, `LLM_API_KEY`, `LLM_MODEL`, `TOKEN_HOURS`, and `FRONTEND_URL` settings. There are no application defaults for these settings. `python-dotenv` loads the local `backend/.env`; deployment environment variables take precedence. LLM settings must be present but may be empty in mock mode; live mode requires nonempty values. `SECRET_KEY` must contain at least 32 bytes. CORS accepts only the origin in `FRONTEND_URL`.
+
+Build the API image from the repository root with `docker build -t ai-pulse-backend ./backend`. `backend/.dockerignore` excludes local environment files and database files from that build context. Both backend and frontend `.env` files are ignored by Git; track only their `.env.example` templates.
+
+Migrations are explicit and are not run when the API server starts. For an existing database created by the original app (or by the earlier startup migration), record the legacy schema baseline once, then apply the new revision:
+
+```bash
+cd backend
+alembic stamp 0001_initial_schema
+alembic upgrade head
+```
+
+Use `alembic stamp` only for an existing database whose tables already match the original AI Pulse schema. For a fresh database, use `alembic upgrade head` directly.
+
+> **Demo data warning:** `python -m app.seed` drops and recreates every table. Use it only with a disposable local database; do not run it against data you need to keep.
+
+The `0002_diagnostic_submissions` migration preserves older response rows but leaves them unlinked to a submission. Since old rows cannot be reliably grouped into a completed diagnostic, they are excluded from reports and dashboard calculations. New submissions use the versioned submission relationship.
+
+Revision `0003_personal_guidance` adds nullable feedback and next-step fields. Run `alembic upgrade head` before starting the updated API. Existing and seeded submissions retain their scores and risks but have no generated guidance; guidance is created only for new submissions.
+
+Revision `0004_submission_average` adds `DiagnosticSubmission.average_score` and backfills it from non-null scores on that submission's matching membership/answer rows. Unlinked legacy answers and mismatched-owner rows are excluded; submissions with no scored answers retain null. Existing answers and guidance are preserved. New submissions calculate the employee average once and save it in the same transaction as their answers. Reports read that saved value; dashboards average the current eligible employees' saved values. Full precision is stored and only displayed values are rounded. Maturity levels remain derived through the shared function. Submissions are immutable; a future answer-editing feature would need to update the saved average in the same transaction.
 
 Frontend:
 
 ```bash
 cd frontend
+# Copy .env.example to .env and set VITE_BACKEND_URL to the API base URL.
 npm install
 npm run dev                 # http://localhost:5173
 ```
@@ -43,16 +70,106 @@ python -m pytest
 
 ## Demo accounts (password `pulse123`)
 
-| Email | Organization(s) | Role |
-|---|---|---|
-| asha@northwind.test | Northwind Logistics | Admin |
-| meera@bluepeak.test | Bluepeak Retail | Admin |
-| ravi@consult.test | Both | Employee at Northwind, admin at Bluepeak |
-| priya@northwind.test | Northwind Logistics | Employee (Support) |
-| dev@northwind.test | Northwind Logistics | Employee (Engineering, lead) |
+| Email                | Organization(s)     | Role                                     |
+| -------------------- | ------------------- | ---------------------------------------- |
+| asha@northwind.test  | Northwind Logistics | Admin                                    |
+| meera@bluepeak.test  | Bluepeak Retail     | Admin                                    |
+| ravi@consult.test    | Both                | Employee at Northwind, admin at Bluepeak |
+| priya@northwind.test | Northwind Logistics | Employee (Support)                       |
+| dev@northwind.test   | Northwind Logistics | Employee (Engineering, lead)             |
 
 ## AI mode
 
-`AI_MODE=mock` (default) returns canned model responses from `backend/data/mock_ai_responses.json`. Like a real model, they are not always well-formed.
+`AI_MODE=mock` uses schema-valid canned scoring responses from `backend/data/mock_ai_responses.json` and deterministic sample guidance. The example environment selects mock mode; the application has no mode fallback. Scores must be in the 1–5 range. Empty risk lists are valid. Invalid scoring output is rejected before answers are saved. Multiple-choice answers use predefined scores and risk flags, without an AI call: "Use it as is" produces `unreviewed_output`, and "I don't know" the company policy produces `policy_unaware`. Other options default to no flags; data-removal answers do not establish that customer data was actually shared. Open-ended answers continue to receive AI-generated flags. Rules apply to new submissions only; existing saved responses are unchanged. Scoring points and flags are not exposed by the questions API.
 
 `AI_MODE=live` calls `LLM_API_URL` with `LLM_API_KEY` and `LLM_MODEL`.
+
+## Engineering assessment notes
+
+### What I found wrong and what I fixed
+
+- The dashboard accepted an `org_id` from the URL but did not check that it matched the organization in the admin's token. The route now rejects a request for another organization, and a regression test covers the cross-organization case.
+- The dashboard counted anyone with at least one answer as a respondent and divided answer-score totals by department headcount. It now counts completed submissions and averages each employee's saved submission average, rather than dividing answer totals by headcount. The employee average is computed once during submission, not recalculated on report/dashboard reads.
+- The report and dashboard used different maturity thresholds. Both now use `utils.maturity_level`, with cutoffs at 2, 3, and 4. Allowed risk identifiers are also shared by the LLM prompt and validation.
+- Risk totals counted repeated flags from one employee more than once. A set now combines flags across that employee's answers, so each employee in an eligible department contributes once per risk.
+- Small departments exposed scores and risk contributions from too few people. The backend now withholds scores and levels below five completed memberships, and excludes those departments from the organization risk summary. The UI explains the response minimum, rather than implying no risks exist when results are suppressed.
+- Answers were stored as unrelated rows, so repeat submissions could be confused with one complete diagnostic. A submission now groups one complete role- and seniority-specific answer set per organization membership. Incomplete submissions are rejected and a second submission returns `409` until the existing one is deleted.
+- Employees now see a submitted status after organization selection, can open the report, and can delete the response from the report view. Deleting a response removes its report data from subsequent reads.
+- The admin dashboard's raw JSON placeholder has been replaced by a department table and top-risk list, with loading and error states.
+- Mock scoring data included malformed results, including out-of-range scores. These fixtures are now schema-valid; malformed model output is still rejected before answers are saved.
+- Schema changes are explicit Alembic revisions rather than DDL run when the API starts. See the migration and legacy database instructions above.
+- The known JWT secret fallback and wildcard CORS were removed. Required configuration is validated at startup, and CORS permits only the configured frontend origin, required methods, and required headers.
+- Passwords previously used unsalted SHA-256. New hashes use an independent random 16-byte salt, stored as `sha256$<salt_hex>$<digest_hex>` in the existing password-hash column. Verification uses constant-time digest comparison. Existing unsalted hashes remain readable and are replaced with salted hashes after a successful login; failed logins leave them unchanged. The seeder automatically uses the new helper for future demo data, without requiring existing data to be reset. No schema migration or extra dependency is needed.
+- Local `.env` files are ignored, the previously tracked backend `.env` was removed from the repository's current tree, and Docker excludes local environment files from the documented build context.
+- The Docker command now starts `app.main:app`, matching the package layout.
+- Seniority filtering compared words alphabetically. It now uses explicit junior, mid, senior, and lead ranks.
+- SQLite connections are reused through the engine pool, with a 30-second lock wait. DB Browser's open transaction caused the local deletion lock; closing it resolved that incident. Increasing the timeout alone does not remove SQLite's concurrency limits.
+
+### What I deliberately left
+
+- Department averages are calculated when the dashboard is requested, rather than stored in the database. This is inexpensive at the current scale and keeps results current after submissions or deletions without maintaining a separate aggregate that could become stale. Each employee's average is still stored with their submission.
+
+### How I handled the client's request and what I would ask
+
+- **Small groups: implemented by hiding results.** Eligibility uses distinct memberships with completed submissions, not headcount or answer-row counts. Below five completions, the API returns `average_score: null`, `level: null`, and `suppressed: true`. Department names, headcounts, and completion counts remain visible. Scores and risks from suppressed departments are excluded from the risk summary, so it cannot reveal them through subtraction from company totals. The response includes the minimum, the risk-summary scope, and whether any department qualifies. An empty eligible summary and a suppressed summary have different UI messages. Employees can always see their own report. Departments with fewer than five employees remain suppressed; pooling is not implemented.
+- **Right to delete:** Employees can delete the selected organization's submission, answers, report data, and personalized guidance themselves after opening the report. Subsequent report and dashboard reads exclude deleted data. An already-open dashboard requires a refresh; other browser sessions do not update automatically.
+- **Questions for HR:** Is hiding small departments sufficient, or would a future safely pooled "Other teams" view be more useful? Does completion mean answering every question assigned to an employee's role and seniority, as the current implementation requires?
+- **Risk-flag question for the client:** What risk flag, if any, should each multiple-choice answer produce? Please confirm a mapping for each question and option, including answers that should remain unflagged. Currently only "Use it as is" → `unreviewed_output` and "I don't know" the policy → `policy_unaware` are mapped. Should "I think so, but I haven't read it" also indicate a policy-awareness gap? Should "Skim it" or rarely removing sensitive details use separate flags for insufficient review or unsafe data handling? These answers should not imply a confirmed data-sharing incident. Low AI usage alone remains unflagged. Written answers also contribute AI-generated flags.
+
+
+### Your own idea: the problem it solves and why you picked it
+
+**Implemented: personalized feedback and next steps.** Previously, every employee in a role received the same fixed suggestions. A score alone did not explain what that employee could improve. I picked personalized guidance to turn the employee's own answers into a practical learning plan.
+
+After scoring, live mode makes one additional guidance request at submission time with a 20-second timeout. Valid feedback and one to three actions are stored on the submission. Opening the report never calls the model again. Deleting the submission removes its guidance; submitting a new diagnostic generates new guidance. Existing submissions are not backfilled.
+
+The role-based `NEXT_STEPS` lists in `backend/app/utils.py` are supplied as reference examples for live guidance. Only the employee's role list is included; the model adapts relevant suggestions to the answers rather than returning the same fixed list for everyone. The prompt explicitly says these references are possible future actions, not evidence of existing employee behaviour. An unknown role receives an empty reference list rather than another role's advice. Existing saved reports are unchanged; new submissions use the updated prompt.
+
+Feedback must be nonempty and no longer than 200 characters. There must be one to three nonempty actions, each at most 240 characters. Incorrect types and extra fields are rejected. If the provider times out or returns invalid guidance, the diagnostic still saves and the report shows guidance as unavailable. Mock mode returns clearly labelled, deterministic sample guidance without a network call.
+
+The prompt treats answers as untrusted data, requires advice grounded in self-reported answers, and forbids invented policies, tools, or incidents. Format validation cannot prove factual correctness; employees should review the advice. Guidance cannot overwrite the separate scores or risk flags.
+
+To demonstrate the feature, submit a new diagnostic and open the report. Reopen it to see the same saved feedback. Delete it and submit different answers to obtain fresh guidance. The report displays the feedback without an introductory AI label, and uses plain punctuation instead of em dashes.
+
+### How I used AI tools and one place they got it wrong
+
+I used AI assistance to inspect the code, discuss tradeoffs, implement fixes and the personalized-guidance feature, write regression tests, and prepare documentation. One mistake: AI assistance introduced strict score validation before checking the mock fixtures, which contained a score of `7` and other malformed output. A normal mock submission then failed. A regression test caught it; invalid score examples were removed, valid-score examples were repaired, and a separate test still verifies that invalid model scoring cannot create a partial submission.
+
+### Verification
+
+- Backend: `python -m pytest -q` — 77 tests passed.
+- MCQ risk tests cover flagged and unflagged options, unchanged option scores, hidden scoring metadata, invalid rule rejection, combined written/MCQ report flags, and counting each employee once per dashboard risk.
+- Frontend: `npm.cmd run build` — passed.
+- Migration tests cover a fresh database, preservation of legacy answers, and adoption of a database that already has the new schema.
+- Saved-average tests cover full-precision storage, rounded report output, reading saved values instead of recalculating answer scores, deletion/resubmission, and migration backfill that preserves answers and guidance while excluding unrelated rows.
+- Local schema verification: `cd backend` then `alembic check` reports no new upgrade operations; the migrated database matches the current models.
+- Guidance tests cover generation once at submission, stable report reads, deletion and resubmission, invalid-output rejection, timeout handling, organization isolation, and preservation of older submissions during migration.
+- Dashboard privacy tests first failed against the unsuppressed API. They now cover zero, one, four, and five completed respondents; exclusion of small-team risk contributions; eligible teams without risks; organization isolation; unaffected personal reports; and immediate suppression on the next read after deletion reduces five completions to four.
+- Password regression tests first failed because identical passwords had identical hashes and legacy logins did not upgrade them. They now cover random salts, correct/wrong passwords, salt tampering, Unicode and whitespace preservation, malformed hashes, successful legacy upgrades, unchanged hashes on failed login, and stable hashes on later logins.
+- Live guidance was demonstrated manually; automated provider tests use simulated responses and cannot prove the quality of every live model response.
+- Role-reference tests check Support, Engineering, Sales, Manager, and unknown-role prompts. A live request with synthetic Support answers also returned valid guidance using the reference themes of avoiding customer-data sharing and reviewing drafted replies; no saved employee data was used or changed.
+
+### Implementation file map
+
+| Feature or fix | Files to review |
+| --- | --- |
+| One complete submission per membership, duplicate-question protection, saved guidance fields | [models.py](backend/app/models.py), [diagnostic.py](backend/app/routes/diagnostic.py) |
+| Submission status, atomic answer/submission deletion, permission scoping | [diagnostic.py](backend/app/routes/diagnostic.py), [auth.py](backend/app/auth.py) |
+| Saved reports without regeneration, feedback deletion with the submission | [reports.py](backend/app/routes/reports.py), [reporting.py](backend/app/services/reporting.py) |
+| Dashboard organization check, completed-employee averages, unique employees per risk | [dashboard.py](backend/app/routes/dashboard.py) |
+| Employee averages calculated once and persisted, existing-submission backfill | [models.py](backend/app/models.py), [diagnostic.py](backend/app/routes/diagnostic.py), [reporting.py](backend/app/services/reporting.py), [average migration](backend/alembic/versions/0004_submission_average.py), [average tests](backend/tests/test_submission_average.py) |
+| Five-completion suppression and eligible-department risk scope | [dashboard.py](backend/app/routes/dashboard.py), [Dashboard.jsx](frontend/src/pages/Dashboard.jsx), [privacy tests](backend/tests/test_dashboard_privacy.py) |
+| Shared maturity thresholds and allowed risk identifiers | [utils.py](backend/app/utils.py), [llm.py](backend/app/services/llm.py), [diagnostic.py](backend/app/routes/diagnostic.py) |
+| Mock/live scoring, output parsing, valid mock examples | [llm.py](backend/app/services/llm.py), [scoring.py](backend/app/services/scoring.py), [mock fixtures](backend/data/mock_ai_responses.json) |
+| Personalized guidance, strict output validation, optional-failure behavior | [guidance.py](backend/app/services/guidance.py), [diagnostic.py](backend/app/routes/diagnostic.py) |
+| Required settings, JWT secret length, single-origin CORS, explicit API URL | [config.py](backend/app/config.py), [main.py](backend/app/main.py), [api.js](frontend/src/api.js), backend/frontend `.env.example` files |
+| Random salted password hashes, constant-time verification, legacy upgrade after successful login | [auth.py](backend/app/auth.py), [auth_routes.py](backend/app/routes/auth_routes.py), [password tests](backend/tests/test_password_hashing.py) |
+| Explicit migrations and existing-data preservation | [Alembic configuration](backend/alembic.ini), [migration environment](backend/alembic/env.py), [versioned migrations](backend/alembic/versions) |
+| Pooled sessions, SQLite lock wait, submission-compatible demo data | [db.py](backend/app/db.py), [seed.py](backend/app/seed.py) |
+| Role/seniority question selection | [questions.py](backend/app/services/questions.py) |
+| Employee flow, report/delete controls, saved guidance presentation | [App.jsx](frontend/src/App.jsx), [EmployeeFlow.jsx](frontend/src/pages/EmployeeFlow.jsx), [Diagnostic.jsx](frontend/src/pages/Diagnostic.jsx), [Report.jsx](frontend/src/pages/Report.jsx) |
+| Department dashboard and responsive table | [Dashboard.jsx](frontend/src/pages/Dashboard.jsx), [styles.css](frontend/src/styles.css) |
+| Correct Docker entry point, environment-file exclusion, declared dependencies | [Dockerfile](backend/Dockerfile), [.dockerignore](backend/.dockerignore), [.gitignore](.gitignore), [requirements.txt](backend/requirements.txt) |
+| Regression evidence for API behavior, isolation, guidance, migrations, configuration, pooling, and seniority | [backend tests](backend/tests) |
+
+Presence of these changes does not mean every production concern is resolved. Adaptive password hashing, membership validation at organization selection, and external-provider data handling still need attention. Small-group privacy suppression is implemented.

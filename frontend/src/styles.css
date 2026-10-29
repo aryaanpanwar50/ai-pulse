@@ -4,3 +4,27 @@ body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7fb; color
 button { background: #3f2a71; color: #fff; border: 0; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
 input, textarea, select { width: 100%; padding: 8px; margin: 6px 0 14px; box-sizing: border-box; }
 .error { color: #b42318; }
+.success { color: #16794b; }
+.danger { background: #b42318; margin-top: 16px; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+.dashboard-card { max-width: 100%; }
+.dashboard-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 28px; }
+.dashboard-header h2 { margin: 4px 0 0; }
+.dashboard-eyebrow { margin: 0; color: #625b70; font-size: .9rem; }
+.dashboard-department-count { color: #625b70; font-size: .9rem; white-space: nowrap; }
+.dashboard-card h3 { margin: 0 0 12px; font-size: 1.05rem; }
+.dashboard-table-wrap { overflow-x: auto; }
+.dashboard-table { width: 100%; border-collapse: collapse; text-align: left; }
+.dashboard-table th, .dashboard-table td { padding: 13px 12px; border-bottom: 1px solid #e7e5ec; }
+.dashboard-table thead th { color: #625b70; font-size: .85rem; font-weight: 600; }
+.dashboard-table tbody th { font-weight: 600; }
+.dashboard-risks { margin-top: 28px; }
+.dashboard-empty { margin: 0; color: #625b70; }
+.dashboard-risk-list { list-style: none; padding: 0; margin: 0; }
+.dashboard-risk-list li { display: flex; justify-content: space-between; gap: 16px; padding: 12px; border-bottom: 1px solid #e7e5ec; }
+.dashboard-risk-count { color: #625b70; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .dashboard-header { flex-direction: column; }
+  .dashboard-table { min-width: 640px; }
+}

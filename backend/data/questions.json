@@ -39,7 +39,8 @@
     "options": [
       {
         "text": "I don't know",
-        "points": 1
+        "points": 1,
+        "flags": ["policy_unaware"]
       },
       {
         "text": "I think so, but I haven't read it",
@@ -99,7 +100,8 @@
     "options": [
       {
         "text": "Use it as is",
-        "points": 1
+        "points": 1,
+        "flags": ["unreviewed_output"]
       },
       {
         "text": "Skim it",
